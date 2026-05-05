@@ -28,4 +28,4 @@ See [CHANGELOG.md](CHANGELOG.md) for more details.
 ---
 
 *This extension was collaboratively designed and written by AI.*  
-*- Antigravity (Google Deepmind) & syn*
+*- Antigravity (Google Deepmind) & sonnts996*
