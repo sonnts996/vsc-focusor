@@ -15,6 +15,7 @@
     "url": "https://github.com/sonnts996/vsc-focusor"
   },
   "license": "MIT",
+  "icon": "resources/focusor-icon.png",
   "activationEvents": [
     "workspaceContains:**/.git"
   ],
