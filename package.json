@@ -1,0 +1,187 @@
+{
+  "name": "focusor",
+  "displayName": "Focusor",
+  "description": "Focus on what changed — filter and view git changes across your workspace repos",
+  "version": "0.0.1",
+  "publisher": "syn",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "SCM Providers"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sonnts996/vsc-focusor"
+  },
+  "license": "MIT",
+  "activationEvents": [
+    "workspaceContains:**/.git"
+  ],
+  "main": "./out/extension.js",
+  "extensionDependencies": [
+    "vscode.git"
+  ],
+  "contributes": {
+    "configuration": {
+      "title": "Focusor",
+      "properties": {
+        "focusor.showSeparator": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a visual separator line between repositories in the tree view."
+        },
+        "focusor.separatorLength": {
+          "type": "number",
+          "default": 10,
+          "description": "The number of characters (length) of the separator line."
+        },
+        "focusor.autoRefreshOnVisible": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically refresh the changes when the Focusor panel becomes visible."
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "focusor",
+          "title": "Focusor",
+          "icon": "resources/focusor-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "focusor": [
+        {
+          "id": "focusor-changes",
+          "name": "Changes"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "focusor.refresh",
+        "title": "Refresh",
+        "category": "Focusor",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "focusor.expandAll",
+        "title": "Expand All",
+        "category": "Focusor",
+        "icon": "$(expand-all)"
+      },
+      {
+        "command": "focusor.collapseAll",
+        "title": "Collapse All",
+        "category": "Focusor",
+        "icon": "$(collapse-all)"
+      },
+      {
+        "command": "focusor.toggleViewMode",
+        "title": "Toggle View Mode (List/Tree)",
+        "category": "Focusor",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "focusor.filterRepos",
+        "title": "Filter Repositories...",
+        "category": "Focusor",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "focusor.openFile",
+        "title": "Open File",
+        "category": "Focusor",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "focusor.openDiff",
+        "title": "Open Changes",
+        "category": "Focusor",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "focusor.openInSCM",
+        "title": "Open in Source Control",
+        "category": "Focusor",
+        "icon": "$(source-control)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "focusor.refresh",
+          "when": "view == focusor-changes",
+          "group": "navigation@1"
+        },
+        {
+          "command": "focusor.expandAll",
+          "when": "view == focusor-changes && !focusor.isExpanded",
+          "group": "navigation@2"
+        },
+        {
+          "command": "focusor.collapseAll",
+          "when": "view == focusor-changes && focusor.isExpanded",
+          "group": "navigation@2"
+        },
+        {
+          "command": "focusor.toggleViewMode",
+          "when": "view == focusor-changes",
+          "group": "navigation@3"
+        },
+        {
+          "command": "focusor.filterRepos",
+          "when": "view == focusor-changes",
+          "group": "navigation@4"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "focusor.openFile",
+          "when": "view == focusor-changes && viewItem == file",
+          "group": "inline@1"
+        },
+        {
+          "command": "focusor.openInSCM",
+          "when": "view == focusor-changes && viewItem == file",
+          "group": "inline@2"
+        },
+        {
+          "command": "focusor.openInSCM",
+          "when": "view == focusor-changes && viewItem == repo",
+          "group": "inline@1"
+        },
+        {
+          "command": "focusor.openInSCM",
+          "when": "view == focusor-changes && viewItem == repo",
+          "group": "navigation@1"
+        },
+        {
+          "command": "focusor.openInSCM",
+          "when": "view == focusor-changes && viewItem == file",
+          "group": "navigation@1"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "focusor-changes",
+        "contents": "No changed repositories found in the workspace.\n[Refresh](command:focusor.refresh)"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  }
+}
