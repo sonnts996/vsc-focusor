@@ -135,6 +135,24 @@ export class GitService {
 	}
 
 	/**
+	 * Get staged (index) changes for a repository.
+	 */
+	getStagedChanges(repo: Repository): Change[] {
+		return [...repo.state.indexChanges];
+	}
+
+	/**
+	 * Get unstaged (working tree + untracked + merge) changes for a repository.
+	 */
+	getUnstagedChanges(repo: Repository): Change[] {
+		return [
+			...repo.state.workingTreeChanges,
+			...repo.state.mergeChanges,
+			...repo.state.untrackedChanges,
+		];
+	}
+
+	/**
 	 * Total change count for a repo.
 	 */
 	getChangeCount(repo: Repository): number {

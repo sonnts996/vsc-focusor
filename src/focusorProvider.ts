@@ -19,7 +19,8 @@ class FolderNode {
 
 /**
  * TreeDataProvider for the Focusor changes view.
- * Shows repos with changes as collapsible parent nodes, with changed files as children.
+ * Shows repos with changes as collapsible parent nodes, with staged/unstaged groups,
+ * and changed files as children.
  * Supports list mode (flat) and tree mode (directory hierarchy).
  */
 export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
@@ -109,15 +110,37 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 		}
 
 		if (element.itemType === FocusorItemType.Repo && element.repoPath) {
-			if (this.viewMode === 'tree') {
-				return this.getTreeModeChildren(element.repoPath, undefined);
+			const config = vscode.workspace.getConfiguration('focusor');
+			const splitStaged = config.get<boolean>('splitStaged', true);
+
+			if (splitStaged) {
+				// Under a repo — show Staged Changes and Changes groups
+				return this.getGroupNodes(element.repoPath);
+			} else {
+				// Under a repo — flat list or tree of all changes
+				if (this.viewMode === 'tree') {
+					return this.getTreeModeChildren(element.repoPath, undefined, undefined);
+				}
+				return this.getFileNodes(element.repoPath, undefined);
 			}
-			// List mode — flat file list
-			return this.getFileNodes(element.repoPath);
+		}
+
+		if (element.itemType === FocusorItemType.StagedGroup && element.repoPath) {
+			if (this.viewMode === 'tree') {
+				return this.getTreeModeChildren(element.repoPath, undefined, true);
+			}
+			return this.getFileNodes(element.repoPath, true);
+		}
+
+		if (element.itemType === FocusorItemType.UnstagedGroup && element.repoPath) {
+			if (this.viewMode === 'tree') {
+				return this.getTreeModeChildren(element.repoPath, undefined, false);
+			}
+			return this.getFileNodes(element.repoPath, false);
 		}
 
 		if (element.itemType === FocusorItemType.Folder && element.repoPath && element.folderPath) {
-			return this.getTreeModeChildren(element.repoPath, element.folderPath);
+			return this.getTreeModeChildren(element.repoPath, element.folderPath, element.isStaged);
 		}
 
 		return [];
@@ -131,17 +154,34 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 			return undefined;
 		}
 
+		if (element.itemType === FocusorItemType.StagedGroup || element.itemType === FocusorItemType.UnstagedGroup) {
+			return this.getRepoNodes().find((n) => n.repoPath === element.repoPath);
+		}
+
 		if (element.itemType === FocusorItemType.File && element.repoPath) {
+			const isStaged = element.isStaged;
+			const config = vscode.workspace.getConfiguration('focusor');
+			const splitStaged = config.get<boolean>('splitStaged', true);
+
 			if (this.viewMode === 'list') {
-				// Parent is the repo node
-				return this.getRepoNodes().find((n) => n.repoPath === element.repoPath);
+				if (splitStaged && isStaged !== undefined) {
+					// Parent is the staged/unstaged group
+					return this.createGroupItem(element.repoPath, isStaged);
+				} else {
+					// Parent is the repo
+					return this.getRepoNodes().find((n) => n.repoPath === element.repoPath);
+				}
 			}
-			// Tree mode — parent could be a folder or repo
+			// Tree mode — parent could be a folder, group, or repo
 			if (element.filePath) {
 				const relativePath = path.relative(element.repoPath, element.filePath);
 				const dirPath = path.dirname(relativePath);
 				if (dirPath === '.') {
-					return this.getRepoNodes().find((n) => n.repoPath === element.repoPath);
+					if (splitStaged && isStaged !== undefined) {
+						return this.createGroupItem(element.repoPath, isStaged);
+					} else {
+						return this.getRepoNodes().find((n) => n.repoPath === element.repoPath);
+					}
 				}
 				// Return a folder node
 				return new FocusorItem(
@@ -152,14 +192,23 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 					undefined,
 					undefined,
 					dirPath,
+					isStaged,
 				);
 			}
 		}
 
 		if (element.itemType === FocusorItemType.Folder && element.repoPath && element.folderPath) {
 			const parentDir = path.dirname(element.folderPath);
+			const isStaged = element.isStaged;
+			const config = vscode.workspace.getConfiguration('focusor');
+			const splitStaged = config.get<boolean>('splitStaged', true);
+
 			if (parentDir === '.') {
-				return this.getRepoNodes().find((n) => n.repoPath === element.repoPath);
+				if (splitStaged && isStaged !== undefined) {
+					return this.createGroupItem(element.repoPath, isStaged);
+				} else {
+					return this.getRepoNodes().find((n) => n.repoPath === element.repoPath);
+				}
 			}
 			return new FocusorItem(
 				FocusorItemType.Folder,
@@ -169,10 +218,33 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 				undefined,
 				undefined,
 				parentDir,
+				isStaged,
 			);
 		}
 
 		return undefined;
+	}
+
+	/**
+	 * Create a staged/unstaged group item (helper for getParent).
+	 */
+	private createGroupItem(repoPath: string, isStaged: boolean): FocusorItem {
+		const repos = this.gitService.getAllRepositories();
+		const repo = repos.find((r) => r.rootUri.fsPath === repoPath);
+		const count = repo
+			? (isStaged ? this.gitService.getStagedChanges(repo).length : this.gitService.getUnstagedChanges(repo).length)
+			: 0;
+
+		const itemType = isStaged ? FocusorItemType.StagedGroup : FocusorItemType.UnstagedGroup;
+		const label = isStaged ? 'Staged Changes' : 'Changes';
+		const item = new FocusorItem(
+			itemType,
+			label,
+			vscode.TreeItemCollapsibleState.Expanded,
+			repoPath,
+		);
+		item.description = `${count}`;
+		return item;
 	}
 
 	/**
@@ -239,6 +311,46 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 	}
 
 	/**
+	 * Build "Staged Changes" and "Changes" group nodes under a repo.
+	 * Only shows groups that have at least one change.
+	 */
+	private getGroupNodes(repoPath: string): FocusorItem[] {
+		const repos = this.gitService.getAllRepositories();
+		const repo = repos.find((r) => r.rootUri.fsPath === repoPath);
+		if (!repo) { return []; }
+
+		const stagedChanges = this.gitService.getStagedChanges(repo);
+		const unstagedChanges = this.gitService.getUnstagedChanges(repo);
+		const nodes: FocusorItem[] = [];
+
+		if (stagedChanges.length > 0) {
+			const item = new FocusorItem(
+				FocusorItemType.StagedGroup,
+				'Staged Changes',
+				vscode.TreeItemCollapsibleState.Expanded,
+				repoPath,
+			);
+			item.description = `${stagedChanges.length}`;
+			item.id = `staged-${repoPath}`;
+			nodes.push(item);
+		}
+
+		if (unstagedChanges.length > 0) {
+			const item = new FocusorItem(
+				FocusorItemType.UnstagedGroup,
+				'Changes',
+				vscode.TreeItemCollapsibleState.Expanded,
+				repoPath,
+			);
+			item.description = `${unstagedChanges.length}`;
+			item.id = `unstaged-${repoPath}`;
+			nodes.push(item);
+		}
+
+		return nodes;
+	}
+
+	/**
 	 * Get the index of the workspace folder that contains the given repo path.
 	 * Returns Infinity if no matching folder is found (sorts to end).
 	 */
@@ -253,14 +365,16 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 	}
 
 	/**
-	 * Build file nodes for all changes in a repo (list/flat mode).
+	 * Build file nodes for staged, unstaged, or all changes in a repo (list/flat mode).
 	 */
-	private getFileNodes(repoPath: string): FocusorItem[] {
+	private getFileNodes(repoPath: string, staged: boolean | undefined): FocusorItem[] {
 		const repos = this.gitService.getAllRepositories();
 		const repo = repos.find((r) => r.rootUri.fsPath === repoPath);
 		if (!repo) { return []; }
 
-		const changes = this.gitService.getAllChanges(repo);
+		const changes = staged === undefined
+			? this.gitService.getAllChanges(repo)
+			: (staged ? this.gitService.getStagedChanges(repo) : this.gitService.getUnstagedChanges(repo));
 		const nodes: FocusorItem[] = [];
 
 		for (const change of changes) {
@@ -276,6 +390,8 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 				repoPath,
 				filePath,
 				change.status,
+				undefined,
+				staged,
 			);
 
 			// Show relative directory path as description (like SCM does)
@@ -297,12 +413,14 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 	/**
 	 * Build children for tree view mode — folders and files under a given folder path.
 	 */
-	private getTreeModeChildren(repoPath: string, folderPath: string | undefined): FocusorItem[] {
+	private getTreeModeChildren(repoPath: string, folderPath: string | undefined, staged: boolean | undefined): FocusorItem[] {
 		const repos = this.gitService.getAllRepositories();
 		const repo = repos.find((r) => r.rootUri.fsPath === repoPath);
 		if (!repo) { return []; }
 
-		const changes = this.gitService.getAllChanges(repo);
+		const changes = staged === undefined
+			? this.gitService.getAllChanges(repo)
+			: (staged ? this.gitService.getStagedChanges(repo) : this.gitService.getUnstagedChanges(repo));
 		const nodes: FocusorItem[] = [];
 
 		// Collect direct subfolders and direct files
@@ -345,6 +463,7 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 				undefined,
 				undefined,
 				fullFolderPath,
+				staged,
 			);
 			item.description = `${count} change${count !== 1 ? 's' : ''}`;
 			nodes.push(item);
@@ -361,6 +480,8 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 				repoPath,
 				filePath,
 				change.status,
+				undefined,
+				staged,
 			);
 
 			const display = getStatusDisplay(change.status);
@@ -370,6 +491,67 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 		}
 
 		return nodes;
+	}
+
+	// === Stage / Unstage operations ===
+
+	/**
+	 * Stage a single file.
+	 */
+	async stageFile(item: FocusorItem): Promise<void> {
+		if (!item.repoPath || !item.filePath) { return; }
+		const repo = this.findRepo(item.repoPath);
+		if (!repo) { return; }
+
+		await repo.add([item.filePath]);
+	}
+
+	/**
+	 * Unstage a single file.
+	 */
+	async unstageFile(item: FocusorItem): Promise<void> {
+		if (!item.repoPath || !item.filePath) { return; }
+		const repo = this.findRepo(item.repoPath);
+		if (!repo) { return; }
+
+		await repo.revert([item.filePath]);
+	}
+
+	/**
+	 * Stage all unstaged files in a repo.
+	 */
+	async stageAll(item: FocusorItem): Promise<void> {
+		if (!item.repoPath) { return; }
+		const repo = this.findRepo(item.repoPath);
+		if (!repo) { return; }
+
+		const changes = this.gitService.getUnstagedChanges(repo);
+		const paths = changes.map((c) => c.uri.fsPath);
+		if (paths.length > 0) {
+			await repo.add(paths);
+		}
+	}
+
+	/**
+	 * Unstage all staged files in a repo.
+	 */
+	async unstageAll(item: FocusorItem): Promise<void> {
+		if (!item.repoPath) { return; }
+		const repo = this.findRepo(item.repoPath);
+		if (!repo) { return; }
+
+		const changes = this.gitService.getStagedChanges(repo);
+		const paths = changes.map((c) => c.uri.fsPath);
+		if (paths.length > 0) {
+			await repo.revert(paths);
+		}
+	}
+
+	/**
+	 * Find a Repository by rootPath.
+	 */
+	private findRepo(repoPath: string): Repository | undefined {
+		return this.gitService.getAllRepositories().find((r) => r.rootUri.fsPath === repoPath);
 	}
 
 	/**

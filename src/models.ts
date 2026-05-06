@@ -10,6 +10,8 @@ export enum FocusorItemType {
 	File = 'file',
 	Folder = 'folder',
 	Separator = 'separator',
+	StagedGroup = 'stagedGroup',
+	UnstagedGroup = 'unstagedGroup',
 }
 
 /**
@@ -77,9 +79,20 @@ export class FocusorItem extends vscode.TreeItem {
 		public readonly filePath?: string,
 		public readonly fileStatus?: Status,
 		public readonly folderPath?: string,
+		public readonly isStaged?: boolean,
 	) {
 		super(label, collapsibleState);
-		this.contextValue = itemType;
+
+		// Set contextValue for menu visibility (e.g. stagedFile vs unstagedFile)
+		if (itemType === FocusorItemType.File) {
+			if (isStaged === undefined) {
+				this.contextValue = 'file';
+			} else {
+				this.contextValue = isStaged ? 'stagedFile' : 'unstagedFile';
+			}
+		} else {
+			this.contextValue = itemType;
+		}
 
 		if (itemType === FocusorItemType.Repo) {
 			this.iconPath = new vscode.ThemeIcon('repo', new vscode.ThemeColor('focusor.repoIconForeground'));

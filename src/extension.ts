@@ -169,6 +169,34 @@ export function activate(context: vscode.ExtensionContext) {
 		}),
 	);
 
+	// Stage File
+	context.subscriptions.push(
+		vscode.commands.registerCommand('focusor.stageFile', (item: FocusorItem) => {
+			focusorProvider.stageFile(item);
+		}),
+	);
+
+	// Unstage File
+	context.subscriptions.push(
+		vscode.commands.registerCommand('focusor.unstageFile', (item: FocusorItem) => {
+			focusorProvider.unstageFile(item);
+		}),
+	);
+
+	// Stage All
+	context.subscriptions.push(
+		vscode.commands.registerCommand('focusor.stageAll', (item: FocusorItem) => {
+			focusorProvider.stageAll(item);
+		}),
+	);
+
+	// Unstage All
+	context.subscriptions.push(
+		vscode.commands.registerCommand('focusor.unstageAll', (item: FocusorItem) => {
+			focusorProvider.unstageAll(item);
+		}),
+	);
+
 	// Add disposables
 	context.subscriptions.push(treeView);
 	context.subscriptions.push(gitService);

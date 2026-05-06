@@ -2,7 +2,7 @@
   "name": "focusor",
   "displayName": "Focusor",
   "description": "Focus on what changed — filter and view git changes across your workspace repos",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "sonnts996",
   "engines": {
     "vscode": "^1.85.0"
@@ -48,6 +48,11 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically refresh the changes when the Focusor panel becomes visible."
+        },
+        "focusor.splitStaged": {
+          "type": "boolean",
+          "default": true,
+          "description": "Split changes into 'Staged Changes' and 'Changes' groups."
         }
       }
     },
@@ -116,6 +121,30 @@
         "title": "Open in Source Control",
         "category": "Focusor",
         "icon": "$(source-control)"
+      },
+      {
+        "command": "focusor.stageFile",
+        "title": "Stage Changes",
+        "category": "Focusor",
+        "icon": "$(add)"
+      },
+      {
+        "command": "focusor.unstageFile",
+        "title": "Unstage Changes",
+        "category": "Focusor",
+        "icon": "$(remove)"
+      },
+      {
+        "command": "focusor.stageAll",
+        "title": "Stage All Changes",
+        "category": "Focusor",
+        "icon": "$(add)"
+      },
+      {
+        "command": "focusor.unstageAll",
+        "title": "Unstage All Changes",
+        "category": "Focusor",
+        "icon": "$(remove)"
       }
     ],
     "menus": {
@@ -149,27 +178,47 @@
       "view/item/context": [
         {
           "command": "focusor.openFile",
-          "when": "view == focusor-changes && viewItem == file",
+          "when": "view == focusor-changes && (viewItem == stagedFile || viewItem == unstagedFile || viewItem == file)",
           "group": "inline@1"
         },
         {
           "command": "focusor.openInSCM",
-          "when": "view == focusor-changes && viewItem == file",
+          "when": "view == focusor-changes && (viewItem == stagedFile || viewItem == unstagedFile || viewItem == file)",
+          "group": "inline@2"
+        },
+        {
+          "command": "focusor.stageFile",
+          "when": "view == focusor-changes && viewItem == unstagedFile",
+          "group": "inline@3"
+        },
+        {
+          "command": "focusor.unstageFile",
+          "when": "view == focusor-changes && viewItem == stagedFile",
+          "group": "inline@3"
+        },
+        {
+          "command": "focusor.stageAll",
+          "when": "view == focusor-changes && viewItem == unstagedGroup",
+          "group": "inline@1"
+        },
+        {
+          "command": "focusor.unstageAll",
+          "when": "view == focusor-changes && viewItem == stagedGroup",
+          "group": "inline@1"
+        },
+        {
+          "command": "focusor.openInSCM",
+          "when": "view == focusor-changes && (viewItem == repo || viewItem == stagedGroup || viewItem == unstagedGroup)",
           "group": "inline@2"
         },
         {
           "command": "focusor.openInSCM",
-          "when": "view == focusor-changes && viewItem == repo",
-          "group": "inline@1"
-        },
-        {
-          "command": "focusor.openInSCM",
-          "when": "view == focusor-changes && viewItem == repo",
+          "when": "view == focusor-changes && (viewItem == repo || viewItem == stagedGroup || viewItem == unstagedGroup)",
           "group": "navigation@1"
         },
         {
           "command": "focusor.openInSCM",
-          "when": "view == focusor-changes && viewItem == file",
+          "when": "view == focusor-changes && (viewItem == stagedFile || viewItem == unstagedFile || viewItem == file)",
           "group": "navigation@1"
         }
       ]
