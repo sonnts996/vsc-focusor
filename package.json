@@ -61,7 +61,12 @@
         },
         "focusor.recents.displayMode": {
           "type": "string",
-          "enum": ["gitOnly", "recentOnly", "combined", "separate"],
+          "enum": [
+            "gitOnly",
+            "recentOnly",
+            "combined",
+            "separate"
+          ],
           "default": "combined",
           "description": "How to display the recent files view."
         },
@@ -80,10 +85,14 @@
           "icon": "resources/focusor-icon.svg"
         },
         {
+          "id": "focusor-git-only",
+          "title": "Git Changes",
+          "icon": "resources/focusor-icon-git-changes.svg"
+        },
+        {
           "id": "focusor-recents-container",
           "title": "Recent Files",
-          "icon": "resources/history.svg",
-          "when": "config.focusor.recents.displayMode == 'separate'"
+          "icon": "resources/focusor-icon-recents.svg"
         }
       ]
     },
@@ -92,19 +101,26 @@
         {
           "id": "focusor-changes",
           "name": "Changes",
-          "when": "config.focusor.recents.displayMode != 'recentOnly'"
+          "when": "config.focusor.recents.displayMode == 'combined'"
         },
         {
           "id": "focusor-recents",
           "name": "Recents",
-          "when": "config.focusor.recents.displayMode == 'combined' || config.focusor.recents.displayMode == 'recentOnly'"
+          "when": "config.focusor.recents.displayMode == 'combined'"
+        }
+      ],
+      "focusor-git-only": [
+        {
+          "id": "focusor-changes-git-only",
+          "name": "Changes",
+          "when": "config.focusor.recents.displayMode == 'gitOnly' || config.focusor.recents.displayMode == 'separate'"
         }
       ],
       "focusor-recents-container": [
         {
           "id": "focusor-recents-separate",
           "name": "Recents",
-          "when": "config.focusor.recents.displayMode == 'separate'"
+          "when": "config.focusor.recents.displayMode == 'separate' || config.focusor.recents.displayMode == 'recentOnly'"
         }
       ]
     },
@@ -204,27 +220,27 @@
       "view/title": [
         {
           "command": "focusor.refresh",
-          "when": "view == focusor-changes",
+          "when": "(view == 'focusor-changes' || view == 'focusor-changes-git-only')",
           "group": "navigation@1"
         },
         {
           "command": "focusor.expandAll",
-          "when": "view == focusor-changes && !focusor.isExpanded",
+          "when": "(view == 'focusor-changes' || view == 'focusor-changes-git-only') && !focusor.isExpanded",
           "group": "navigation@2"
         },
         {
           "command": "focusor.collapseAll",
-          "when": "view == focusor-changes && focusor.isExpanded",
+          "when": "(view == 'focusor-changes' || view == 'focusor-changes-git-only') && focusor.isExpanded",
           "group": "navigation@2"
         },
         {
           "command": "focusor.toggleViewMode",
-          "when": "view == focusor-changes",
+          "when": "(view == 'focusor-changes' || view == 'focusor-changes-git-only')",
           "group": "navigation@3"
         },
         {
           "command": "focusor.filterRepos",
-          "when": "view == focusor-changes",
+          "when": "(view == 'focusor-changes' || view == 'focusor-changes-git-only')",
           "group": "navigation@4"
         },
         {
@@ -236,47 +252,47 @@
       "view/item/context": [
         {
           "command": "focusor.openFile",
-          "when": "view == focusor-changes && (viewItem == stagedFile || viewItem == unstagedFile || viewItem == file)",
+          "when": "(view == 'focusor-changes' || view == 'focusor-changes-git-only') && (viewItem == stagedFile || viewItem == unstagedFile || viewItem == file)",
           "group": "inline@1"
         },
         {
           "command": "focusor.openInSCM",
-          "when": "view == focusor-changes && (viewItem == stagedFile || viewItem == unstagedFile || viewItem == file)",
+          "when": "(view == 'focusor-changes' || view == 'focusor-changes-git-only') && (viewItem == stagedFile || viewItem == unstagedFile || viewItem == file)",
           "group": "inline@2"
         },
         {
           "command": "focusor.stageFile",
-          "when": "view == focusor-changes && viewItem == unstagedFile",
+          "when": "(view == 'focusor-changes' || view == 'focusor-changes-git-only') && viewItem == unstagedFile",
           "group": "inline@3"
         },
         {
           "command": "focusor.unstageFile",
-          "when": "view == focusor-changes && viewItem == stagedFile",
+          "when": "(view == 'focusor-changes' || view == 'focusor-changes-git-only') && viewItem == stagedFile",
           "group": "inline@3"
         },
         {
           "command": "focusor.stageAll",
-          "when": "view == focusor-changes && viewItem == unstagedGroup",
+          "when": "(view == 'focusor-changes' || view == 'focusor-changes-git-only') && viewItem == unstagedGroup",
           "group": "inline@1"
         },
         {
           "command": "focusor.unstageAll",
-          "when": "view == focusor-changes && viewItem == stagedGroup",
+          "when": "(view == 'focusor-changes' || view == 'focusor-changes-git-only') && viewItem == stagedGroup",
           "group": "inline@1"
         },
         {
           "command": "focusor.openInSCM",
-          "when": "view == focusor-changes && (viewItem == repo || viewItem == stagedGroup || viewItem == unstagedGroup)",
+          "when": "(view == 'focusor-changes' || view == 'focusor-changes-git-only') && (viewItem == repo || viewItem == stagedGroup || viewItem == unstagedGroup)",
           "group": "inline@2"
         },
         {
           "command": "focusor.openInSCM",
-          "when": "view == focusor-changes && (viewItem == repo || viewItem == stagedGroup || viewItem == unstagedGroup)",
+          "when": "(view == 'focusor-changes' || view == 'focusor-changes-git-only') && (viewItem == repo || viewItem == stagedGroup || viewItem == unstagedGroup)",
           "group": "navigation@1"
         },
         {
           "command": "focusor.openInSCM",
-          "when": "view == focusor-changes && (viewItem == stagedFile || viewItem == unstagedFile || viewItem == file)",
+          "when": "(view == 'focusor-changes' || view == 'focusor-changes-git-only') && (viewItem == stagedFile || viewItem == unstagedFile || viewItem == file)",
           "group": "navigation@1"
         },
         {

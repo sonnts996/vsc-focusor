@@ -693,8 +693,9 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 	/**
 	 * Highlights the file in the Focusor changes tree view.
 	 */
-	async revealFile(fsPath: string, treeView: vscode.TreeView<FocusorItem>): Promise<void> {
-		if (!treeView.visible) return;
+	async revealFile(fsPath: string, ...treeViews: vscode.TreeView<FocusorItem>[]): Promise<void> {
+		const visibleTreeViews = treeViews.filter(tv => tv.visible);
+		if (visibleTreeViews.length === 0) return;
 
 		const repos = this.gitService.getAllRepositories();
 		const repo = repos.find(r => fsPath.startsWith(r.rootUri.fsPath));
@@ -736,10 +737,12 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 			isStaged
 		);
 
-		try {
-			await treeView.reveal(item, { select: true, focus: false, expand: true });
-		} catch (e) {
-			// Ignore if item can't be revealed
+		for (const treeView of visibleTreeViews) {
+			try {
+				await treeView.reveal(item, { select: true, focus: false, expand: true });
+			} catch (e) {
+				// Ignore if item can't be revealed
+			}
 		}
 	}
 }

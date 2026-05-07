@@ -18,8 +18,11 @@ export function activate(context: vscode.ExtensionContext) {
 	let isExpanded = true;
 	vscode.commands.executeCommand('setContext', 'focusor.isExpanded', isExpanded);
 
-	// Register the tree view (no built-in collapseAll — we handle it ourselves)
 	const treeView = vscode.window.createTreeView('focusor-changes', {
+		treeDataProvider: focusorProvider,
+	});
+
+	const gitOnlyTreeView = vscode.window.createTreeView('focusor-changes-git-only', {
 		treeDataProvider: focusorProvider,
 	});
 
@@ -230,19 +233,39 @@ export function activate(context: vscode.ExtensionContext) {
 		}),
 	);
 
-	// Highlight current file in trees
+	// Highlight current file in trees on editor change
 	context.subscriptions.push(
 		vscode.window.onDidChangeActiveTextEditor(editor => {
 			if (editor && editor.document.uri.scheme === 'file') {
 				const fsPath = editor.document.uri.fsPath;
-				focusorProvider.revealFile(fsPath, treeView);
+				focusorProvider.revealFile(fsPath, treeView, gitOnlyTreeView);
 				recentProvider.revealFile(fsPath, recentTreeView, recentSeparateTreeView);
 			}
 		})
 	);
 
+	// Highlight current file when tree view becomes visible
+	const revealActiveEditor = (tv: vscode.TreeView<any>, provider: any) => {
+		return tv.onDidChangeVisibility(e => {
+			if (e.visible) {
+				const editor = vscode.window.activeTextEditor;
+				if (editor && editor.document.uri.scheme === 'file') {
+					provider.revealFile(editor.document.uri.fsPath, tv);
+				}
+			}
+		});
+	};
+
+	context.subscriptions.push(
+		revealActiveEditor(treeView, focusorProvider),
+		revealActiveEditor(gitOnlyTreeView, focusorProvider),
+		revealActiveEditor(recentTreeView, recentProvider),
+		revealActiveEditor(recentSeparateTreeView, recentProvider)
+	);
+
 	// Add disposables
 	context.subscriptions.push(treeView);
+	context.subscriptions.push(gitOnlyTreeView);
 	context.subscriptions.push(recentTreeView);
 	context.subscriptions.push(recentSeparateTreeView);
 	context.subscriptions.push(gitService);
