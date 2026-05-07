@@ -7,7 +7,7 @@ import { Repository, Change, Status } from './git';
 
 const SELECT_ALL_ID = '__focusor_select_all__';
 
-export type ViewMode = 'list' | 'tree';
+export type ViewMode = 'list' | 'tree' | 'compact';
 
 /**
  * Represents a folder node in tree view mode.
@@ -30,8 +30,11 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 	/** Set of repo root paths that the user has hidden via the filter. */
 	private hiddenRepos: Set<string>;
 
-	/** Current view mode: 'list' (flat) or 'tree' (directory hierarchy). */
+	/** Current view mode: 'list' (flat), 'tree' (directory hierarchy), or 'compact' (flat dirs). */
 	private viewMode: ViewMode;
+
+	/** Cache for tree mode hierarchy: map from repoPath to map of folderPath to FocusorItem[] */
+	private treeModeCache: Map<string, Map<string, FocusorItem[]>> = new Map();
 
 	/** Reference to the TreeView for programmatic control (expand all). */
 	private treeView: vscode.TreeView<FocusorItem> | undefined;
@@ -45,8 +48,9 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 		const saved = context.workspaceState.get<string[]>('focusor.hiddenRepos', []);
 		this.hiddenRepos = new Set(saved);
 
-		// Restore view mode from workspace state
-		this.viewMode = context.workspaceState.get<ViewMode>('focusor.viewMode', 'list');
+		// Initialize view mode from configuration
+		const config = vscode.workspace.getConfiguration('focusor');
+		this.viewMode = config.get<ViewMode>('changes.viewMode', 'tree');
 
 		// Auto-refresh when git state changes
 		gitService.onDidChange(() => this.refresh());
@@ -71,15 +75,20 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 	 */
 	refresh(): void {
 		this.decorationProvider.clearAll();
+		this.treeModeCache.clear();
 		this._onDidChangeTreeData.fire(undefined);
 	}
 
 	/**
-	 * Toggle between list and tree view modes.
+	 * Cycle the view mode between list, tree, and compact.
 	 */
 	async toggleViewMode(): Promise<void> {
-		this.viewMode = this.viewMode === 'list' ? 'tree' : 'list';
-		await this.context.workspaceState.update('focusor.viewMode', this.viewMode);
+		const modes: ViewMode[] = ['list', 'tree', 'compact'];
+		const currentIndex = modes.indexOf(this.viewMode);
+		this.viewMode = modes[(currentIndex + 1) % modes.length];
+		
+		const config = vscode.workspace.getConfiguration('focusor');
+		await config.update('changes.viewMode', this.viewMode, vscode.ConfigurationTarget.Global);
 		this.refresh();
 	}
 
@@ -111,14 +120,15 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 
 		if (element.itemType === FocusorItemType.Repo && element.repoPath) {
 			const config = vscode.workspace.getConfiguration('focusor');
-			const splitStaged = config.get<boolean>('splitStaged', true);
+			const splitStaged = config.get<boolean>('changes.splitStaged', true);
+			this.viewMode = config.get<ViewMode>('changes.viewMode', 'tree');
 
 			if (splitStaged) {
 				// Under a repo — show Staged Changes and Changes groups
 				return this.getGroupNodes(element.repoPath);
 			} else {
 				// Under a repo — flat list or tree of all changes
-				if (this.viewMode === 'tree') {
+				if (this.viewMode === 'tree' || this.viewMode === 'compact') {
 					return this.getTreeModeChildren(element.repoPath, undefined, undefined);
 				}
 				return this.getFileNodes(element.repoPath, undefined);
@@ -126,14 +136,14 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 		}
 
 		if (element.itemType === FocusorItemType.StagedGroup && element.repoPath) {
-			if (this.viewMode === 'tree') {
+			if (this.viewMode === 'tree' || this.viewMode === 'compact') {
 				return this.getTreeModeChildren(element.repoPath, undefined, true);
 			}
 			return this.getFileNodes(element.repoPath, true);
 		}
 
 		if (element.itemType === FocusorItemType.UnstagedGroup && element.repoPath) {
-			if (this.viewMode === 'tree') {
+			if (this.viewMode === 'tree' || this.viewMode === 'compact') {
 				return this.getTreeModeChildren(element.repoPath, undefined, false);
 			}
 			return this.getFileNodes(element.repoPath, false);
@@ -161,7 +171,7 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 		if (element.itemType === FocusorItemType.File && element.repoPath) {
 			const isStaged = element.isStaged;
 			const config = vscode.workspace.getConfiguration('focusor');
-			const splitStaged = config.get<boolean>('splitStaged', true);
+			const splitStaged = config.get<boolean>('changes.splitStaged', true);
 
 			if (this.viewMode === 'list') {
 				if (splitStaged && isStaged !== undefined) {
@@ -201,7 +211,7 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 			const parentDir = path.dirname(element.folderPath);
 			const isStaged = element.isStaged;
 			const config = vscode.workspace.getConfiguration('focusor');
-			const splitStaged = config.get<boolean>('splitStaged', true);
+			const splitStaged = config.get<boolean>('changes.splitStaged', true);
 
 			if (parentDir === '.') {
 				if (splitStaged && isStaged !== undefined) {
@@ -262,9 +272,9 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 			return indexA - indexB;
 		});
 
-		const config = vscode.workspace.getConfiguration('focusor');
-		const showSeparator = config.get<boolean>('showSeparator', true);
-		const sepLength = config.get<number>('separatorLength', 10);
+		const generalConfig = vscode.workspace.getConfiguration('focusor.general');
+		const showSeparator = generalConfig.get<boolean>('showSeparator', true);
+		const sepLength = generalConfig.get<number>('separatorLength', 10);
 		const sepString = '─'.repeat(Math.max(1, sepLength));
 
 		const nodes: FocusorItem[] = [];
@@ -397,7 +407,11 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 
 			// Status display
 			const display = getStatusDisplay(change.status);
-			item.tooltip = `${relativePath}`;
+			
+			const tooltip = new vscode.MarkdownString();
+			tooltip.appendMarkdown(`**${fileName}** • ${display.tooltip}\n\n`);
+			tooltip.appendMarkdown(`Path: \`${relativePath}\``);
+			item.tooltip = tooltip;
 
 			// Register decoration for this file
 			this.decorationProvider.setDecoration(change.uri, change.status);
@@ -410,85 +424,174 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 
 	/**
 	 * Build children for tree view mode — folders and files under a given folder path.
+	 * Uses caching to prevent O(N) recalculations for every folder expansion.
 	 */
 	private getTreeModeChildren(repoPath: string, folderPath: string | undefined, staged: boolean | undefined): FocusorItem[] {
+		const cacheKey = `${repoPath}::${staged === undefined ? 'all' : staged ? 'staged' : 'unstaged'}`;
+		
+		if (!this.treeModeCache.has(cacheKey)) {
+			// Build the entire tree structure for this repo and cache it
+			this.buildTreeModeCacheForRepo(repoPath, staged, cacheKey);
+		}
+
+		const repoCache = this.treeModeCache.get(cacheKey)!;
+		const queryPath = folderPath || '.';
+		return repoCache.get(queryPath) || [];
+	}
+
+	/**
+	 * Builds and caches the hierarchical structure of changes for a given repository.
+	 */
+	private buildTreeModeCacheForRepo(repoPath: string, staged: boolean | undefined, cacheKey: string): void {
+		const repoCache = new Map<string, FocusorItem[]>();
+		this.treeModeCache.set(cacheKey, repoCache);
+
 		const repos = this.gitService.getAllRepositories();
 		const repo = repos.find((r) => r.rootUri.fsPath === repoPath);
-		if (!repo) { return []; }
+		if (!repo) { return; }
 
 		const changes = staged === undefined
 			? this.gitService.getAllChanges(repo)
 			: (staged ? this.gitService.getStagedChanges(repo) : this.gitService.getUnstagedChanges(repo));
-		const nodes: FocusorItem[] = [];
 
-		// Collect direct subfolders and direct files
-		const subfolders = new Map<string, number>(); // subfolder name → change count
-		const directFiles: { change: Change; relativePath: string; filePath: string }[] = [];
+		// Maps folderPath -> { subfolders: Set<string>, files: Change[] }
+		const structure = new Map<string, { subfolders: Map<string, number>; files: { change: Change; relativePath: string; filePath: string }[] }>();
 
+		// Helper to ensure folder exists in structure
+		const ensureFolder = (fPath: string) => {
+			if (!structure.has(fPath)) {
+				structure.set(fPath, { subfolders: new Map(), files: [] });
+			}
+			return structure.get(fPath)!;
+		};
+
+		// Pass 1: Build the hierarchical structure
 		for (const change of changes) {
 			const filePath = change.uri.fsPath;
 			const relativePath = path.relative(repoPath, filePath);
+			
+			// Process each directory level
+			const parts = relativePath.split(path.sep);
+			const fileName = parts.pop()!;
+			
+			// Add file to its direct parent folder
+			const parentFolder = parts.length > 0 ? parts.join(path.sep) : '.';
+			const parentNode = ensureFolder(parentFolder);
+			parentNode.files.push({ change, relativePath, filePath });
 
-			// Determine path relative to current folder
-			const relativeToFolder = folderPath ? path.relative(folderPath, relativePath) : relativePath;
+			// Traverse up and populate subfolder sets and counts
+			let currentPath = parentFolder;
+			let currentParts = parts;
+			
+			while (currentPath !== '.') {
+				currentParts.pop();
+				const grandParentPath = currentParts.length > 0 ? currentParts.join(path.sep) : '.';
+				const folderName = path.basename(currentPath);
+				
+				const grandParentNode = ensureFolder(grandParentPath);
+				const count = grandParentNode.subfolders.get(folderName) || 0;
+				grandParentNode.subfolders.set(folderName, count + 1);
+				
+				currentPath = grandParentPath;
+			}
+		}
 
-			// Skip files not under this folder
-			if (relativeToFolder.startsWith('..')) {
-				continue;
+		// Pass 1.5: Compact folders if viewMode is 'compact'
+		if (this.viewMode === 'compact') {
+			// Find folders that can be compacted (1 subfolder, 0 files)
+			// We iterate until no more compactions can be made
+			let compacted = true;
+			while (compacted) {
+				compacted = false;
+				for (const [fPath, node] of structure.entries()) {
+					if (fPath !== '.' && node.files.length === 0 && node.subfolders.size === 1) {
+						// This folder fPath has exactly 1 subfolder and 0 files.
+						// We can merge it with its child.
+						const childFolderName = Array.from(node.subfolders.keys())[0];
+						const childPath = path.join(fPath, childFolderName);
+						const childNode = structure.get(childPath);
+
+						if (childNode) {
+							// Find the parent of fPath to update its reference
+							const parentDir = path.dirname(fPath);
+							const parentNode = structure.get(parentDir);
+							const currentFolderName = path.basename(fPath);
+
+							if (parentNode) {
+								// The new compacted name will be currentFolderName + '/' + childFolderName
+								const newFolderName = currentFolderName + path.sep + childFolderName;
+								
+								// Remove old reference
+								parentNode.subfolders.delete(currentFolderName);
+								
+								// Add new reference
+								const childCount = node.subfolders.get(childFolderName) || 0;
+								parentNode.subfolders.set(newFolderName, childCount);
+
+								// Update child node's own path to be mapped correctly in the final output
+								// We actually map it to the childPath, but the name in the tree will be newFolderName.
+								// To make getChildren work properly, we need to restructure the maps.
+								
+								// Wait, since `fPath` is removed and parent points to `newFolderName` which corresponds to `childPath`,
+								// We just need to remove `fPath` from structure.
+								structure.delete(fPath);
+								compacted = true;
+								break; // break to restart iteration safely
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Pass 2: Convert structure to FocusorItem nodes
+		for (const [fPath, node] of structure.entries()) {
+			const nodes: FocusorItem[] = [];
+
+			// Add folder nodes (sorted alphabetically)
+			const sortedFolders = Array.from(node.subfolders.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+			for (const [folderName, count] of sortedFolders) {
+				const fullFolderPath = fPath === '.' ? folderName : path.join(fPath, folderName);
+				const item = new FocusorItem(
+					FocusorItemType.Folder,
+					folderName,
+					vscode.TreeItemCollapsibleState.Collapsed,
+					repoPath,
+					undefined,
+					undefined,
+					fullFolderPath,
+					staged,
+				);
+				item.description = `${count} change${count !== 1 ? 's' : ''}`;
+				nodes.push(item);
 			}
 
-			const parts = relativeToFolder.split(path.sep);
+			// Add file nodes (sorted alphabetically)
+			node.files.sort((a, b) => path.basename(a.filePath).localeCompare(path.basename(b.filePath)));
+			for (const { change, relativePath, filePath } of node.files) {
+				const fName = path.basename(filePath);
+				const item = new FocusorItem(
+					FocusorItemType.File,
+					fName,
+					vscode.TreeItemCollapsibleState.None,
+					repoPath,
+					filePath,
+					change.status,
+					undefined,
+					staged,
+				);
 
-			if (parts.length === 1) {
-				// Direct file in this folder
-				directFiles.push({ change, relativePath, filePath });
-			} else {
-				// File is inside a subfolder
-				const subfolderName = parts[0];
-				subfolders.set(subfolderName, (subfolders.get(subfolderName) || 0) + 1);
+				const display = getStatusDisplay(change.status);
+				const tooltip = new vscode.MarkdownString();
+				tooltip.appendMarkdown(`**${fName}** • ${display.tooltip}\n\n`);
+				tooltip.appendMarkdown(`Path: \`${relativePath}\``);
+				item.tooltip = tooltip;
+				this.decorationProvider.setDecoration(change.uri, change.status);
+				nodes.push(item);
 			}
+
+			repoCache.set(fPath, nodes);
 		}
-
-		// Add folder nodes first (sorted alphabetically)
-		const sortedFolders = Array.from(subfolders.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-		for (const [folderName, count] of sortedFolders) {
-			const fullFolderPath = folderPath ? path.join(folderPath, folderName) : folderName;
-			const item = new FocusorItem(
-				FocusorItemType.Folder,
-				folderName,
-				vscode.TreeItemCollapsibleState.Expanded,
-				repoPath,
-				undefined,
-				undefined,
-				fullFolderPath,
-				staged,
-			);
-			item.description = `${count} change${count !== 1 ? 's' : ''}`;
-			nodes.push(item);
-		}
-
-		// Add file nodes (sorted alphabetically)
-		directFiles.sort((a, b) => path.basename(a.filePath).localeCompare(path.basename(b.filePath)));
-		for (const { change, relativePath, filePath } of directFiles) {
-			const fileName = path.basename(filePath);
-			const item = new FocusorItem(
-				FocusorItemType.File,
-				fileName,
-				vscode.TreeItemCollapsibleState.None,
-				repoPath,
-				filePath,
-				change.status,
-				undefined,
-				staged,
-			);
-
-			const display = getStatusDisplay(change.status);
-			item.tooltip = `${relativePath}`;
-			this.decorationProvider.setDecoration(change.uri, change.status);
-			nodes.push(item);
-		}
-
-		return nodes;
 	}
 
 	// === Stage / Unstage operations ===
@@ -720,7 +823,7 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 
 		// Check if we are splitting by staged/unstaged
 		const config = vscode.workspace.getConfiguration('focusor');
-		const splitStaged = config.get<boolean>('splitStaged', true);
+		const splitStaged = config.get<boolean>('changes.splitStaged', true);
 		if (!splitStaged) {
 			isStaged = undefined;
 		}

@@ -44,7 +44,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		treeView.onDidChangeVisibility((e) => {
 			if (e.visible) {
-				const config = vscode.workspace.getConfiguration('focusor');
+				const config = vscode.workspace.getConfiguration('focusor.general');
 				if (config.get<boolean>('autoRefreshOnVisible', true)) {
 					focusorProvider.refresh();
 				}

@@ -31,52 +31,74 @@
     "vscode.git"
   ],
   "contributes": {
-    "configuration": {
-      "title": "Focusor",
-      "properties": {
-        "focusor.showSeparator": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show a visual separator line between repositories in the tree view."
-        },
-        "focusor.separatorLength": {
-          "type": "number",
-          "default": 10,
-          "description": "The number of characters (length) of the separator line."
-        },
-        "focusor.autoRefreshOnVisible": {
-          "type": "boolean",
-          "default": true,
-          "description": "Automatically refresh the changes when the Focusor panel becomes visible."
-        },
-        "focusor.splitStaged": {
-          "type": "boolean",
-          "default": true,
-          "description": "Split changes into 'Staged Changes' and 'Changes' groups."
-        },
-        "focusor.recents.maxFiles": {
-          "type": "number",
-          "default": 50,
-          "description": "Maximum number of files to keep in the recent list."
-        },
-        "focusor.recents.displayMode": {
-          "type": "string",
-          "enum": [
-            "gitOnly",
-            "recentOnly",
-            "combined",
-            "separate"
-          ],
-          "default": "combined",
-          "description": "How to display the recent files view."
-        },
-        "focusor.recents.groupByRepo": {
-          "type": "boolean",
-          "default": false,
-          "description": "Group recent files by repository."
+    "configuration": [
+      {
+        "title": "Focusor: General",
+        "properties": {
+          "focusor.general.showSeparator": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show a visual separator line between repositories in the tree view."
+          },
+          "focusor.general.separatorLength": {
+            "type": "number",
+            "default": 10,
+            "description": "The number of characters (length) of the separator line."
+          },
+          "focusor.general.autoRefreshOnVisible": {
+            "type": "boolean",
+            "default": true,
+            "description": "Automatically refresh the changes when the Focusor panel becomes visible."
+          }
+        }
+      },
+      {
+        "title": "Focusor: Changes View",
+        "properties": {
+          "focusor.changes.splitStaged": {
+            "type": "boolean",
+            "default": true,
+            "description": "Split changes into 'Staged Changes' and 'Changes' groups."
+          },
+          "focusor.changes.viewMode": {
+            "type": "string",
+            "enum": [
+              "list",
+              "tree",
+              "compact"
+            ],
+            "default": "tree",
+            "description": "How to display directories in the Git changes view. 'list' shows a flat list of files. 'tree' shows nested directories. 'compact' shows nested directories but compacts single-child folders."
+          }
+        }
+      },
+      {
+        "title": "Focusor: Recent Files",
+        "properties": {
+          "focusor.recents.maxFiles": {
+            "type": "number",
+            "default": 50,
+            "description": "Maximum number of files to keep in the recent list."
+          },
+          "focusor.recents.displayMode": {
+            "type": "string",
+            "enum": [
+              "gitOnly",
+              "recentOnly",
+              "combined",
+              "separate"
+            ],
+            "default": "combined",
+            "description": "How to display the recent files view."
+          },
+          "focusor.recents.groupByRepo": {
+            "type": "boolean",
+            "default": false,
+            "description": "Group recent files by repository."
+          }
         }
       }
-    },
+    ],
     "viewsContainers": {
       "activitybar": [
         {

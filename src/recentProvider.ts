@@ -34,6 +34,7 @@ export class RecentProvider implements vscode.TreeDataProvider<vscode.TreeItem> 
 	private recentFiles: RecentFile[] = [];
 	private maxFiles: number = 50;
 	private groupByRepo: boolean = false;
+	private saveStateTimer: NodeJS.Timeout | undefined;
 
 	constructor(
 		private context: vscode.ExtensionContext,
@@ -79,9 +80,18 @@ export class RecentProvider implements vscode.TreeDataProvider<vscode.TreeItem> 
 		this.recentFiles = this.context.workspaceState.get<RecentFile[]>('focusor.recentFiles', []);
 	}
 
-	private async saveState() {
-		await this.context.workspaceState.update('focusor.recentFiles', this.recentFiles);
+	private saveState() {
+		if (this.saveStateTimer) {
+			clearTimeout(this.saveStateTimer);
+		}
+		
+		// Update the UI immediately so it feels snappy
 		this.refresh();
+
+		// Debounce the actual disk I/O to avoid performance hits when switching tabs rapidly
+		this.saveStateTimer = setTimeout(async () => {
+			await this.context.workspaceState.update('focusor.recentFiles', this.recentFiles);
+		}, 500);
 	}
 
 	refresh(): void {
@@ -145,12 +155,16 @@ export class RecentProvider implements vscode.TreeDataProvider<vscode.TreeItem> 
 		
 		item.description = dirPath;
 		
-		// Tooltip: RepoName • Path/To/File
+		const tooltip = new vscode.MarkdownString();
 		if (repoName) {
-			item.tooltip = `${repoName} • ${relativePath}`;
+			tooltip.appendMarkdown(`**${path.basename(file.fsPath)}**\n\n`);
+			tooltip.appendMarkdown(`Repository: \`${repoName}\`\n\n`);
+			tooltip.appendMarkdown(`Path: \`${relativePath}\``);
 		} else {
-			item.tooltip = `${relativePath}`;
+			tooltip.appendMarkdown(`**${path.basename(file.fsPath)}**\n\n`);
+			tooltip.appendMarkdown(`Path: \`${relativePath}\``);
 		}
+		item.tooltip = tooltip;
 
 		item.resourceUri = uri;
 		item.iconPath = vscode.ThemeIcon.File;

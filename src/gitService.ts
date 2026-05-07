@@ -10,6 +10,7 @@ import { RepoInfo } from './models';
 export class GitService {
 	private api: API | undefined;
 	private disposables: vscode.Disposable[] = [];
+	private debounceTimer: NodeJS.Timeout | undefined;
 
 	private readonly _onDidChange = new vscode.EventEmitter<void>();
 	readonly onDidChange = this._onDidChange.event;
@@ -77,14 +78,14 @@ export class GitService {
 		this.disposables.push(
 			this.api.onDidOpenRepository((repo) => {
 				this.watchRepo(repo);
-				this._onDidChange.fire();
+				this.fireDidChangeDebounced();
 			})
 		);
 
 		// Listen for repos closing
 		this.disposables.push(
 			this.api.onDidCloseRepository(() => {
-				this._onDidChange.fire();
+				this.fireDidChangeDebounced();
 			})
 		);
 
@@ -94,7 +95,7 @@ export class GitService {
 		}
 
 		// Initial fire
-		this._onDidChange.fire();
+		this.fireDidChangeDebounced();
 	}
 
 	/**
@@ -103,9 +104,21 @@ export class GitService {
 	private watchRepo(repo: Repository): void {
 		this.disposables.push(
 			repo.state.onDidChange(() => {
-				this._onDidChange.fire();
+				this.fireDidChangeDebounced();
 			})
 		);
+	}
+
+	/**
+	 * Debounce the _onDidChange event firing to avoid UI freezes on rapid git events.
+	 */
+	private fireDidChangeDebounced(): void {
+		if (this.debounceTimer) {
+			clearTimeout(this.debounceTimer);
+		}
+		this.debounceTimer = setTimeout(() => {
+			this._onDidChange.fire();
+		}, 250); // 250ms debounce window
 	}
 
 	/**
@@ -126,30 +139,30 @@ export class GitService {
 	 * Get all changes for a repository (working tree + index + merge + untracked).
 	 */
 	getAllChanges(repo: Repository): Change[] {
-		return [
-			...repo.state.indexChanges,
-			...repo.state.workingTreeChanges,
-			...repo.state.mergeChanges,
-			...repo.state.untrackedChanges,
-		];
+		return ([] as Change[]).concat(
+			repo.state.indexChanges,
+			repo.state.workingTreeChanges,
+			repo.state.mergeChanges,
+			repo.state.untrackedChanges
+		);
 	}
 
 	/**
 	 * Get staged (index) changes for a repository.
 	 */
 	getStagedChanges(repo: Repository): Change[] {
-		return [...repo.state.indexChanges];
+		return repo.state.indexChanges;
 	}
 
 	/**
 	 * Get unstaged (working tree + untracked + merge) changes for a repository.
 	 */
 	getUnstagedChanges(repo: Repository): Change[] {
-		return [
-			...repo.state.workingTreeChanges,
-			...repo.state.mergeChanges,
-			...repo.state.untrackedChanges,
-		];
+		return ([] as Change[]).concat(
+			repo.state.workingTreeChanges,
+			repo.state.mergeChanges,
+			repo.state.untrackedChanges
+		);
 	}
 
 	/**
@@ -178,6 +191,9 @@ export class GitService {
 	}
 
 	dispose(): void {
+		if (this.debounceTimer) {
+			clearTimeout(this.debounceTimer);
+		}
 		this.disposables.forEach((d) => d.dispose());
 		this._onDidChange.dispose();
 	}
