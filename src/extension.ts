@@ -4,6 +4,7 @@ import { FocusorProvider } from './focusorProvider';
 import { FocusorDecorationProvider } from './decorationProvider';
 import { FocusorItem, FocusorItemType } from './models';
 import { GitExtension } from './git';
+import { RecentProvider } from './recentProvider';
 
 export function activate(context: vscode.ExtensionContext) {
 	console.log('Focusor: Activating...');
@@ -20,6 +21,17 @@ export function activate(context: vscode.ExtensionContext) {
 	// Register the tree view (no built-in collapseAll — we handle it ourselves)
 	const treeView = vscode.window.createTreeView('focusor-changes', {
 		treeDataProvider: focusorProvider,
+	});
+
+	// Initialize Recents Provider
+	const recentProvider = new RecentProvider(context, gitService, decorationProvider);
+	
+	const recentTreeView = vscode.window.createTreeView('focusor-recents', {
+		treeDataProvider: recentProvider,
+	});
+	
+	const recentSeparateTreeView = vscode.window.createTreeView('focusor-recents-separate', {
+		treeDataProvider: recentProvider,
 	});
 
 	// Give the provider a reference to the tree view for expand all
@@ -197,8 +209,42 @@ export function activate(context: vscode.ExtensionContext) {
 		}),
 	);
 
+	// Recents: Pin
+	context.subscriptions.push(
+		vscode.commands.registerCommand('focusor.recents.pin', (item: vscode.TreeItem) => {
+			recentProvider.pinFile(item);
+		}),
+	);
+
+	// Recents: Unpin
+	context.subscriptions.push(
+		vscode.commands.registerCommand('focusor.recents.unpin', (item: vscode.TreeItem) => {
+			recentProvider.unpinFile(item);
+		}),
+	);
+
+	// Recents: Clear All
+	context.subscriptions.push(
+		vscode.commands.registerCommand('focusor.recents.clear', () => {
+			recentProvider.clearAll();
+		}),
+	);
+
+	// Highlight current file in trees
+	context.subscriptions.push(
+		vscode.window.onDidChangeActiveTextEditor(editor => {
+			if (editor && editor.document.uri.scheme === 'file') {
+				const fsPath = editor.document.uri.fsPath;
+				focusorProvider.revealFile(fsPath, treeView);
+				recentProvider.revealFile(fsPath, recentTreeView, recentSeparateTreeView);
+			}
+		})
+	);
+
 	// Add disposables
 	context.subscriptions.push(treeView);
+	context.subscriptions.push(recentTreeView);
+	context.subscriptions.push(recentSeparateTreeView);
 	context.subscriptions.push(gitService);
 	context.subscriptions.push(decorationProvider);
 	context.subscriptions.push(focusorProvider);

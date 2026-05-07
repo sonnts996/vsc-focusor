@@ -5,6 +5,9 @@ Focus on what changed — easily filter and view git changes across your workspa
 ## Features
 
 - **Multi-root workspace support:** Automatically detects all Git repositories in your workspace that have uncommitted changes.
+- **Recents History:** Track and quickly jump between your recently opened files, complete with git file statuses. Pin important files to the top.
+- **Split Staged Changes:** Logically separates Staged and Unstaged changes in the tree view for a more native Git experience.
+- **Auto-Reveal:** Automatically syncs the tree views with your currently active editor tab.
 - **Filtering:** Quickly filter which repositories are visible using the "Filter Repositories" menu.
 - **List and Tree views:** Toggle between a flat list of files or a hierarchical tree view of folders.
 - **Source Control Integration:** Open changed files directly or jump straight to the built-in Source Control view for any repository.
@@ -13,9 +16,13 @@ Focus on what changed — easily filter and view git changes across your workspa
 ## Settings
 
 You can customize the extension through VS Code settings:
+- `focusor.splitStaged`: Show separate groups for Staged Changes and Changes.
 - `focusor.showSeparator`: Show a visual separator line between repositories.
 - `focusor.separatorLength`: The number of characters of the separator line.
 - `focusor.autoRefreshOnVisible`: Automatically refresh when the Focusor panel is opened.
+- `focusor.recents.displayMode`: Choose how the Recents panel is displayed (`combined`, `separate`, `recentOnly`, `gitOnly`).
+- `focusor.recents.maxFiles`: Maximum number of recent files to track.
+- `focusor.recents.groupByRepo`: Group recent files visually by their parent repository.
 
 ## Requirements
 

@@ -110,6 +110,14 @@ export class FocusorItem extends vscode.TreeItem {
 				arguments: [this],
 			};
 		}
+
+		// Generate unique ID for tree view selection mapping
+		const idParts: string[] = [itemType as string];
+		if (repoPath) idParts.push(repoPath);
+		if (folderPath) idParts.push(folderPath);
+		if (filePath) idParts.push(filePath);
+		if (isStaged !== undefined) idParts.push(isStaged ? 'staged' : 'unstaged');
+		this.id = idParts.join('::');
 	}
 }
 

@@ -331,7 +331,6 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 				repoPath,
 			);
 			item.description = `${stagedChanges.length}`;
-			item.id = `staged-${repoPath}`;
 			nodes.push(item);
 		}
 
@@ -343,7 +342,6 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 				repoPath,
 			);
 			item.description = `${unstagedChanges.length}`;
-			item.id = `unstaged-${repoPath}`;
 			nodes.push(item);
 		}
 
@@ -399,7 +397,7 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 
 			// Status display
 			const display = getStatusDisplay(change.status);
-			item.tooltip = `${relativePath} · ${display.tooltip}`;
+			item.tooltip = `${relativePath}`;
 
 			// Register decoration for this file
 			this.decorationProvider.setDecoration(change.uri, change.status);
@@ -485,7 +483,7 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 			);
 
 			const display = getStatusDisplay(change.status);
-			item.tooltip = `${relativePath} · ${display.tooltip}`;
+			item.tooltip = `${relativePath}`;
 			this.decorationProvider.setDecoration(change.uri, change.status);
 			nodes.push(item);
 		}
@@ -690,5 +688,58 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 
 	dispose(): void {
 		this._onDidChangeTreeData.dispose();
+	}
+
+	/**
+	 * Highlights the file in the Focusor changes tree view.
+	 */
+	async revealFile(fsPath: string, treeView: vscode.TreeView<FocusorItem>): Promise<void> {
+		if (!treeView.visible) return;
+
+		const repos = this.gitService.getAllRepositories();
+		const repo = repos.find(r => fsPath.startsWith(r.rootUri.fsPath));
+		if (!repo) return;
+
+		// Determine if the file is staged or unstaged
+		let isStaged: boolean | undefined = undefined;
+		const stagedChanges = this.gitService.getStagedChanges(repo);
+		if (stagedChanges.some(c => c.uri.fsPath === fsPath)) {
+			isStaged = true;
+		} else {
+			const unstagedChanges = this.gitService.getUnstagedChanges(repo);
+			if (unstagedChanges.some(c => c.uri.fsPath === fsPath)) {
+				isStaged = false;
+			}
+		}
+
+		if (isStaged === undefined) {
+			// Not a changed file tracked by focusor
+			return;
+		}
+
+		// Check if we are splitting by staged/unstaged
+		const config = vscode.workspace.getConfiguration('focusor');
+		const splitStaged = config.get<boolean>('splitStaged', true);
+		if (!splitStaged) {
+			isStaged = undefined;
+		}
+
+		// Create a mock FocusorItem that contains enough info for getParent to resolve it
+		const item = new FocusorItem(
+			FocusorItemType.File,
+			path.basename(fsPath),
+			vscode.TreeItemCollapsibleState.None,
+			repo.rootUri.fsPath,
+			fsPath,
+			undefined,
+			undefined,
+			isStaged
+		);
+
+		try {
+			await treeView.reveal(item, { select: true, focus: false, expand: true });
+		} catch (e) {
+			// Ignore if item can't be revealed
+		}
 	}
 }
