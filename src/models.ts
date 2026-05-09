@@ -90,6 +90,12 @@ export class FocusorItem extends vscode.TreeItem {
 			} else {
 				this.contextValue = isStaged ? 'stagedFile' : 'unstagedFile';
 			}
+		} else if (itemType === FocusorItemType.Folder) {
+			if (isStaged === undefined) {
+				this.contextValue = 'folder';
+			} else {
+				this.contextValue = isStaged ? 'stagedFolder' : 'unstagedFolder';
+			}
 		} else {
 			this.contextValue = itemType;
 		}

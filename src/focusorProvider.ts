@@ -597,25 +597,71 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 	// === Stage / Unstage operations ===
 
 	/**
-	 * Stage a single file.
+	 * Stage a single file or folder.
 	 */
 	async stageFile(item: FocusorItem): Promise<void> {
-		if (!item.repoPath || !item.filePath) { return; }
+		if (!item.repoPath) { return; }
 		const repo = this.findRepo(item.repoPath);
 		if (!repo) { return; }
 
-		await repo.add([item.filePath]);
+		if (item.itemType === FocusorItemType.File && item.filePath) {
+			await repo.add([item.filePath]);
+		} else if (item.itemType === FocusorItemType.Folder && item.folderPath) {
+			const paths = this.getChangesInFolder(item.repoPath, item.folderPath, false);
+			if (paths.length > 0) {
+				await repo.add(paths);
+			}
+		}
 	}
 
 	/**
-	 * Unstage a single file.
+	 * Discard changes in a single file or folder.
 	 */
-	async unstageFile(item: FocusorItem): Promise<void> {
-		if (!item.repoPath || !item.filePath) { return; }
+	async discardFile(item: FocusorItem): Promise<void> {
+		if (!item.repoPath) { return; }
 		const repo = this.findRepo(item.repoPath);
 		if (!repo) { return; }
 
-		await repo.revert([item.filePath]);
+		let paths: string[] = [];
+		let label = '';
+
+		if (item.itemType === FocusorItemType.File && item.filePath) {
+			paths = [item.filePath];
+			label = path.basename(item.filePath);
+		} else if (item.itemType === FocusorItemType.Folder && item.folderPath) {
+			paths = this.getChangesInFolder(item.repoPath, item.folderPath, false);
+			label = item.label as string || item.folderPath;
+		}
+
+		if (paths.length === 0) { return; }
+
+		const confirm = await vscode.window.showWarningMessage(
+			`Are you sure you want to discard changes in ${label}?`,
+			{ modal: true },
+			'Discard Changes'
+		);
+
+		if (confirm === 'Discard Changes') {
+			await repo.clean(paths);
+		}
+	}
+
+	/**
+	 * Unstage a single file or folder.
+	 */
+	async unstageFile(item: FocusorItem): Promise<void> {
+		if (!item.repoPath) { return; }
+		const repo = this.findRepo(item.repoPath);
+		if (!repo) { return; }
+
+		if (item.itemType === FocusorItemType.File && item.filePath) {
+			await repo.revert([item.filePath]);
+		} else if (item.itemType === FocusorItemType.Folder && item.folderPath) {
+			const paths = this.getChangesInFolder(item.repoPath, item.folderPath, true);
+			if (paths.length > 0) {
+				await repo.revert(paths);
+			}
+		}
 	}
 
 	/**
@@ -630,6 +676,30 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 		const paths = changes.map((c) => c.uri.fsPath);
 		if (paths.length > 0) {
 			await repo.add(paths);
+		}
+	}
+
+	/**
+	 * Discard all unstaged changes in a repo.
+	 */
+	async discardAll(item: FocusorItem): Promise<void> {
+		if (!item.repoPath) { return; }
+		const repo = this.findRepo(item.repoPath);
+		if (!repo) { return; }
+
+		const changes = this.gitService.getUnstagedChanges(repo);
+		const paths = changes.map((c) => c.uri.fsPath);
+		if (paths.length === 0) { return; }
+
+		const repoName = path.basename(item.repoPath);
+		const confirm = await vscode.window.showWarningMessage(
+			`Are you sure you want to discard ALL unstaged changes in ${repoName}? This cannot be undone.`,
+			{ modal: true },
+			'Discard All Changes'
+		);
+
+		if (confirm === 'Discard All Changes') {
+			await repo.clean(paths);
 		}
 	}
 
@@ -653,6 +723,25 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 	 */
 	private findRepo(repoPath: string): Repository | undefined {
 		return this.gitService.getAllRepositories().find((r) => r.rootUri.fsPath === repoPath);
+	}
+
+	/**
+	 * Get all changes (staged or unstaged) that belong to a specific folder in a repo.
+	 */
+	private getChangesInFolder(repoPath: string, folderPath: string, isStaged: boolean | undefined): string[] {
+		const repo = this.findRepo(repoPath);
+		if (!repo) { return []; }
+
+		const changes = isStaged === undefined
+			? this.gitService.getAllChanges(repo)
+			: (isStaged ? this.gitService.getStagedChanges(repo) : this.gitService.getUnstagedChanges(repo));
+
+		return changes
+			.filter(c => {
+				const relativePath = path.relative(repoPath, c.uri.fsPath);
+				return relativePath === folderPath || relativePath.startsWith(folderPath + path.sep);
+			})
+			.map(c => c.uri.fsPath);
 	}
 
 	/**

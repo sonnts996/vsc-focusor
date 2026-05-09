@@ -11,16 +11,18 @@ Focus on what changed — easily filter and view git changes across your workspa
 - **Filtering:** Quickly filter which repositories are visible using the "Filter Repositories" menu.
 - **List and Tree views:** Toggle between a flat list of files or a hierarchical tree view of folders.
 - **Source Control Integration:** Open changed files directly or jump straight to the built-in Source Control view for any repository.
+- **Stage and Discard:** Quickly stage or discard changes directly from the tree view.
 - **Auto-refresh:** Keeps track of your git changes automatically.
 
 ## Settings
 
 You can customize the extension through VS Code settings:
-- `focusor.splitStaged`: Show separate groups for Staged Changes and Changes.
-- `focusor.showSeparator`: Show a visual separator line between repositories.
-- `focusor.separatorLength`: The number of characters of the separator line.
-- `focusor.autoRefreshOnVisible`: Automatically refresh when the Focusor panel is opened.
-- `focusor.recents.displayMode`: Choose how the Recents panel is displayed (`combined`, `separate`, `recentOnly`, `gitOnly`).
+- `focusor.changes.splitStaged`: Show separate groups for Staged Changes and Changes.
+- `focusor.changes.viewMode`: How to display directories in the Git changes view (`list`, `tree`, `compact`).
+- `focusor.general.showSeparator`: Show a visual separator line between repositories.
+- `focusor.general.separatorLength`: The number of characters of the separator line.
+- `focusor.general.autoRefreshOnVisible`: Automatically refresh when the Focusor panel is opened.
+- `focusor.general.displayMode`: Choose how the Recents panel is displayed (`combined`, `separate`, `recentOnly`, `gitOnly`).
 - `focusor.recents.maxFiles`: Maximum number of recent files to track.
 - `focusor.recents.groupByRepo`: Group recent files visually by their parent repository.
 

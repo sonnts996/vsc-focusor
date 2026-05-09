@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { GitService } from './gitService';
 import { FocusorProvider } from './focusorProvider';
 import { FocusorDecorationProvider } from './decorationProvider';
@@ -184,10 +185,62 @@ export function activate(context: vscode.ExtensionContext) {
 		}),
 	);
 
+	const getItemPath = (item: any): string | undefined => {
+		if (item.filePath) return item.filePath;
+		if (item.folderPath && item.repoPath) {
+			// In some cases folderPath is relative to repoPath
+			if (path.isAbsolute(item.folderPath)) return item.folderPath;
+			return path.join(item.repoPath, item.folderPath);
+		}
+		if (item.repoPath) return item.repoPath;
+		if (item.resourceUri) return item.resourceUri.fsPath;
+		if (item.id && item.id.startsWith('recent-')) return item.id.replace('recent-', '');
+		return undefined;
+	};
+
+	// Open in Explorer
+	context.subscriptions.push(
+		vscode.commands.registerCommand('focusor.openInExplorer', (item: any) => {
+			const filePath = getItemPath(item);
+			if (filePath) {
+				vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(filePath));
+			}
+		}),
+	);
+
+	// Copy Path
+	context.subscriptions.push(
+		vscode.commands.registerCommand('focusor.copyPath', (item: any) => {
+			const filePath = getItemPath(item);
+			if (filePath) {
+				vscode.env.clipboard.writeText(filePath);
+			}
+		}),
+	);
+
+	// Copy Relative Path
+	context.subscriptions.push(
+		vscode.commands.registerCommand('focusor.copyRelativePath', (item: any) => {
+			const filePath = getItemPath(item);
+			if (filePath) {
+				const workspaceFolder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(filePath));
+				const relativePath = workspaceFolder ? path.relative(workspaceFolder.uri.fsPath, filePath) : filePath;
+				vscode.env.clipboard.writeText(relativePath);
+			}
+		}),
+	);
+
 	// Stage File
 	context.subscriptions.push(
 		vscode.commands.registerCommand('focusor.stageFile', (item: FocusorItem) => {
 			focusorProvider.stageFile(item);
+		}),
+	);
+	
+	// Discard File
+	context.subscriptions.push(
+		vscode.commands.registerCommand('focusor.discardFile', (item: FocusorItem) => {
+			focusorProvider.discardFile(item);
 		}),
 	);
 
@@ -202,6 +255,13 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('focusor.stageAll', (item: FocusorItem) => {
 			focusorProvider.stageAll(item);
+		}),
+	);
+
+	// Discard All
+	context.subscriptions.push(
+		vscode.commands.registerCommand('focusor.discardAll', (item: FocusorItem) => {
+			focusorProvider.discardAll(item);
 		}),
 	);
 
