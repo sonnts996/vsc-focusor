@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { GitService } from './gitService';
 import { FocusorDecorationProvider } from './decorationProvider';
-import { FocusorItem, FocusorItemType, getStatusDisplay } from './models';
+import { FocusorItem, FocusorItemType, getFocusorResourceUri, getStatusDisplay } from './models';
 import { Repository, Change, Status } from './git';
 
 const SELECT_ALL_ID = '__focusor_select_all__';
@@ -36,8 +36,8 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 	/** Cache for tree mode hierarchy: map from repoPath to map of folderPath to FocusorItem[] */
 	private treeModeCache: Map<string, Map<string, FocusorItem[]>> = new Map();
 
-	/** Reference to the TreeView for programmatic control (expand all). */
-	private treeView: vscode.TreeView<FocusorItem> | undefined;
+	/** References to TreeViews for programmatic control (expand all). / Tham chiếu TreeView để điều khiển mở toàn bộ. */
+	private treeViews: vscode.TreeView<FocusorItem>[] = [];
 
 	constructor(
 		private readonly gitService: GitService,
@@ -57,10 +57,11 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 	}
 
 	/**
-	 * Set the TreeView reference for programmatic control.
+	 * Add a TreeView reference for programmatic control.
+	 * Thêm tham chiếu TreeView để điều khiển bằng lệnh.
 	 */
 	setTreeView(treeView: vscode.TreeView<FocusorItem>): void {
-		this.treeView = treeView;
+		this.treeViews.push(treeView);
 	}
 
 	/**
@@ -93,17 +94,39 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 	}
 
 	/**
-	 * Expand all repo nodes in the tree view.
+	 * Expand every collapsible repo, group, and folder node in the tree views.
+	 * Mở toàn bộ repo, group, và folder có thể expand trong các tree view.
 	 */
 	async expandAll(): Promise<void> {
-		if (!this.treeView) { return; }
+		if (this.treeViews.length === 0) { return; }
 
 		const repoNodes = this.getRepoNodes();
-		for (const node of repoNodes) {
+		for (const treeView of this.treeViews) {
+			for (const node of repoNodes) {
+				await this.expandNodeRecursively(treeView, node);
+			}
+		}
+	}
+
+	/**
+	 * Recursively reveal expandable nodes so every collapsed folder opens.
+	 * Reveal đệ quy các node có thể expand để mở toàn bộ folder đang collapse.
+	 */
+	private async expandNodeRecursively(treeView: vscode.TreeView<FocusorItem>, node: FocusorItem): Promise<void> {
+		if (node.collapsibleState === vscode.TreeItemCollapsibleState.None) { return; }
+
+		try {
+			await treeView.reveal(node, { expand: true, select: false, focus: false });
+		} catch {
+			// Ignore nodes that are not visible in this tree view. / Bỏ qua node không hiển thị trong tree view này.
+			return;
+		}
+
+		for (const child of this.getChildren(node)) {
 			try {
-				await this.treeView.reveal(node, { expand: 2, select: false, focus: false });
+				await this.expandNodeRecursively(treeView, child);
 			} catch {
-				// Ignore errors if node is not visible
+				// Continue expanding siblings when one branch cannot be revealed. / Tiếp tục mở nhánh khác khi một nhánh lỗi.
 			}
 		}
 	}
@@ -415,6 +438,7 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 
 			// Register decoration for this file
 			this.decorationProvider.setDecoration(change.uri, change.status);
+			this.decorationProvider.setDecoration(getFocusorResourceUri(filePath, change.status), change.status);
 
 			nodes.push(item);
 		}
@@ -587,6 +611,7 @@ export class FocusorProvider implements vscode.TreeDataProvider<FocusorItem> {
 				tooltip.appendMarkdown(`Path: \`${relativePath}\``);
 				item.tooltip = tooltip;
 				this.decorationProvider.setDecoration(change.uri, change.status);
+				this.decorationProvider.setDecoration(getFocusorResourceUri(filePath, change.status), change.status);
 				nodes.push(item);
 			}
 

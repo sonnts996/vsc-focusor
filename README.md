@@ -22,7 +22,6 @@ You can customize the extension through VS Code settings:
 - `focusor.general.showSeparator`: Show a visual separator line between repositories.
 - `focusor.general.separatorLength`: The number of characters of the separator line.
 - `focusor.general.autoRefreshOnVisible`: Automatically refresh when the Focusor panel is opened.
-- `focusor.general.displayMode`: Choose how the Recents panel is displayed (`combined`, `separate`, `recentOnly`, `gitOnly`).
 - `focusor.recents.maxFiles`: Maximum number of recent files to track.
 - `focusor.recents.groupByRepo`: Group recent files visually by their parent repository.
 

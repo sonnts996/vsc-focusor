@@ -2,6 +2,17 @@
 
 All notable changes to the "focusor" extension will be documented in this file.
 
+## [0.1.1] - 2026-06-19
+
+### Fixed
+- Expanded all collapsed folders when using Expand All in the Changes view.
+- Matched deleted file styling in Recents with the Changes view.
+- Opened deleted files through Git content instead of missing working-tree paths.
+- Opened new and untracked files directly from Changes instead of diffing against HEAD.
+
+### Changed
+- Removed the display mode setting and kept Changes and Recents together in the Focusor panel.
+
 ## [0.1.0] - 2026-05-07
 
 ### Added
@@ -9,7 +20,7 @@ All notable changes to the "focusor" extension will be documented in this file.
   - Automatically records opened files and maintains a history.
   - Support for pinning files to keep them easily accessible.
   - Dynamically displays git file statuses alongside recent files.
-  - Highly configurable layout (combined with Changes, separate Activity Bar icon, etc.).
+  - Integrated alongside Changes in the Focusor panel.
   - Option to group recent files by their parent repository.
 - **Split Staged/Unstaged**: The Changes view now logically separates "Staged Changes" and "Changes" for clearer tracking.
 - **Auto-Reveal**: The extension now automatically scrolls to and highlights the currently active editor file in both the Changes and Recents panels.

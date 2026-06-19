@@ -2,7 +2,8 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { GitService } from './gitService';
 import { FocusorDecorationProvider } from './decorationProvider';
-import { getStatusDisplay } from './models';
+import { getFocusorResourceUri, isDeletedStatus, renderStrikethroughLabel } from './models';
+import { GitExtension } from './git';
 
 export class RecentGroupItem extends vscode.TreeItem {
 	constructor(label: string, public readonly isPinnedGroup: boolean) {
@@ -65,6 +66,14 @@ export class RecentProvider implements vscode.TreeDataProvider<vscode.TreeItem> 
 		// Listen to git state changes to update file statuses
 		context.subscriptions.push(
 			this.gitService.onDidChange(() => this.refresh())
+		);
+
+		context.subscriptions.push(
+			vscode.commands.registerCommand('focusor.recents.openDeleted', async (fsPath: string, originalUri: vscode.Uri) => {
+				const openUri = await this.resolveDeletedOpenUri(fsPath, originalUri);
+				// Open deleted recents through Git content when needed. / Mở recent đã xóa qua nội dung Git khi cần.
+				await vscode.window.showTextDocument(openUri, { preview: false });
+			})
 		);
 	}
 
@@ -133,13 +142,35 @@ export class RecentProvider implements vscode.TreeDataProvider<vscode.TreeItem> 
 		return { key: 'unknown', name: 'Unknown' };
 	}
 
+	/**
+	 * Resolve a readable URI for deleted recent files, matching the Changes view behavior.
+	 * Resolve URI có thể đọc cho recent file đã xóa, đồng bộ với Changes view.
+	 */
+	private async resolveDeletedOpenUri(fsPath: string, originalUri: vscode.Uri): Promise<vscode.Uri> {
+		if (originalUri.scheme !== 'file') {
+			return originalUri;
+		}
+
+		const gitExtension = vscode.extensions.getExtension<GitExtension>('vscode.git');
+		if (!gitExtension) {
+			return originalUri;
+		}
+
+		const gitApi = gitExtension.isActive ? gitExtension.exports : await gitExtension.activate();
+		return gitApi.getAPI(1).toGitUri(vscode.Uri.file(fsPath), 'HEAD');
+	}
+
 	private createFileItem(file: RecentFile): vscode.TreeItem {
-		const item = new vscode.TreeItem(path.basename(file.fsPath), vscode.TreeItemCollapsibleState.None);
+		const fileName = path.basename(file.fsPath);
+		const item = new vscode.TreeItem(fileName, vscode.TreeItemCollapsibleState.None);
 		const workspaceFolder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(file.fsPath));
 		const relativePath = workspaceFolder ? path.relative(workspaceFolder.uri.fsPath, file.fsPath) : file.fsPath;
 
-		let statusTooltip = '';
 		const uri = vscode.Uri.file(file.fsPath);
+		let resourceUri = uri;
+		let openUri = uri;
+		let command = 'vscode.open';
+		let commandArguments: unknown[] = [openUri];
 		const repo = this.gitService.getAllRepositories().find(r => file.fsPath.startsWith(r.rootUri.fsPath));
 		
 		if (repo) {
@@ -147,6 +178,16 @@ export class RecentProvider implements vscode.TreeDataProvider<vscode.TreeItem> 
 			const change = changes.find(c => c.uri.fsPath === file.fsPath);
 			if (change) {
 				this.decorationProvider.setDecoration(uri, change.status);
+				resourceUri = getFocusorResourceUri(file.fsPath, change.status);
+				this.decorationProvider.setDecoration(resourceUri, change.status);
+				// Mirror deleted styling from Changes view in Recents. / Đồng bộ style file đã xóa từ Changes sang Recents.
+				if (isDeletedStatus(change.status)) {
+					item.label = renderStrikethroughLabel(fileName);
+					openUri = change.originalUri;
+					// Open deleted recents as a tracked snapshot like Source Control. / Mở recent đã xóa như snapshot đã track giống Source Control.
+					command = 'focusor.recents.openDeleted';
+					commandArguments = [file.fsPath, openUri];
+				}
 			}
 		}
 
@@ -157,24 +198,24 @@ export class RecentProvider implements vscode.TreeDataProvider<vscode.TreeItem> 
 		
 		const tooltip = new vscode.MarkdownString();
 		if (repoName) {
-			tooltip.appendMarkdown(`**${path.basename(file.fsPath)}**\n\n`);
+			tooltip.appendMarkdown(`**${fileName}**\n\n`);
 			tooltip.appendMarkdown(`Repository: \`${repoName}\`\n\n`);
 			tooltip.appendMarkdown(`Path: \`${relativePath}\``);
 		} else {
-			tooltip.appendMarkdown(`**${path.basename(file.fsPath)}**\n\n`);
+			tooltip.appendMarkdown(`**${fileName}**\n\n`);
 			tooltip.appendMarkdown(`Path: \`${relativePath}\``);
 		}
 		item.tooltip = tooltip;
 
-		item.resourceUri = uri;
+		item.resourceUri = resourceUri;
 		item.iconPath = vscode.ThemeIcon.File;
 		item.contextValue = file.pinned ? 'recentFilePinned' : 'recentFileUnpinned';
 		
 		// Click to open
 		item.command = {
-			command: 'vscode.open',
+			command,
 			title: 'Open File',
-			arguments: [uri]
+			arguments: commandArguments
 		};
 
 		// Store the fsPath in id so we can use it in commands

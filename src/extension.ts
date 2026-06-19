@@ -3,8 +3,8 @@ import * as path from 'path';
 import { GitService } from './gitService';
 import { FocusorProvider } from './focusorProvider';
 import { FocusorDecorationProvider } from './decorationProvider';
-import { FocusorItem, FocusorItemType } from './models';
-import { GitExtension } from './git';
+import { FOCUSOR_DELETED_EMPTY_SCHEME, FocusorItem, FocusorItemType, isDeletedStatus, isNewStatus } from './models';
+import { Change, GitExtension } from './git';
 import { RecentProvider } from './recentProvider';
 
 export function activate(context: vscode.ExtensionContext) {
@@ -23,22 +23,14 @@ export function activate(context: vscode.ExtensionContext) {
 		treeDataProvider: focusorProvider,
 	});
 
-	const gitOnlyTreeView = vscode.window.createTreeView('focusor-changes-git-only', {
-		treeDataProvider: focusorProvider,
-	});
-
 	// Initialize Recents Provider
 	const recentProvider = new RecentProvider(context, gitService, decorationProvider);
 	
 	const recentTreeView = vscode.window.createTreeView('focusor-recents', {
 		treeDataProvider: recentProvider,
 	});
-	
-	const recentSeparateTreeView = vscode.window.createTreeView('focusor-recents-separate', {
-		treeDataProvider: recentProvider,
-	});
 
-	// Give the provider a reference to the tree view for expand all
+	// Give the provider a reference to the changes view for expand all. / Truyền changes view để mở toàn bộ.
 	focusorProvider.setTreeView(treeView);
 
 	// Auto-refresh when the Focusor panel becomes visible, if enabled in settings
@@ -66,6 +58,87 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.window.registerFileDecorationProvider(decorationProvider),
 	);
+
+	context.subscriptions.push(
+		vscode.workspace.registerTextDocumentContentProvider(FOCUSOR_DELETED_EMPTY_SCHEME, {
+			// Provide an empty right-hand side for deleted-file diffs. / Cung cấp vế phải rỗng cho diff file đã xóa.
+			provideTextDocumentContent: () => '',
+		}),
+	);
+
+	/**
+	 * Find the Git API change for a Focusor file item.
+	 * Tìm thay đổi từ Git API tương ứng với file item của Focusor.
+	 */
+	const getChangeForItem = (item: FocusorItem): Change | undefined => {
+		if (!item.filePath || !item.repoPath) { return undefined; }
+
+		const repo = gitService.getAllRepositories().find((r) => r.rootUri.fsPath === item.repoPath);
+		if (!repo) { return undefined; }
+
+		return gitService.getAllChanges(repo).find((change) => change.uri.fsPath === item.filePath);
+	};
+
+	/**
+	 * Resolve the tracked URI for deleted files when the working-tree path is missing.
+	 * Resolve URI đã track cho file đã xóa khi path working-tree không còn tồn tại.
+	 */
+	const getDeletedOriginalUri = async (item: FocusorItem): Promise<vscode.Uri | undefined> => {
+		if (!item.filePath || item.fileStatus === undefined || !isDeletedStatus(item.fileStatus)) {
+			return undefined;
+		}
+
+		const change = getChangeForItem(item);
+		if (change?.originalUri && change.originalUri.scheme !== 'file') {
+			return change.originalUri;
+		}
+
+		const gitExtension = vscode.extensions.getExtension<GitExtension>('vscode.git');
+		if (gitExtension) {
+			const gitApi = gitExtension.isActive ? gitExtension.exports : await gitExtension.activate();
+			const api = gitApi.getAPI(1);
+			const uri = vscode.Uri.file(item.filePath);
+			const headUri = api.toGitUri(uri, 'HEAD');
+			return headUri;
+		}
+
+		return undefined;
+	};
+
+	/**
+	 * Open tracked content for deleted files instead of diffing against a missing path.
+	 * Mở nội dung đã track cho file đã xóa thay vì diff với path không tồn tại.
+	 */
+	const openDeletedFileContent = async (item: FocusorItem): Promise<boolean> => {
+		if (!item.filePath) { return false; }
+
+		const originalUri = await getDeletedOriginalUri(item);
+		if (!originalUri) {
+			return false;
+		}
+
+		await vscode.window.showTextDocument(originalUri, { preview: false });
+		return true;
+	};
+
+	/**
+	 * Open file-like statuses that should not be diffed against HEAD.
+	 * Mở các trạng thái file không nên diff với HEAD.
+	 */
+	const openNonDiffableFile = async (item: FocusorItem): Promise<boolean> => {
+		if (!item.filePath || item.fileStatus === undefined) { return false; }
+
+		if (isDeletedStatus(item.fileStatus)) {
+			return openDeletedFileContent(item);
+		}
+
+		if (isNewStatus(item.fileStatus)) {
+			await vscode.window.showTextDocument(vscode.Uri.file(item.filePath), { preview: false });
+			return true;
+		}
+
+		return false;
+	};
 
 	// === Commands ===
 
@@ -110,8 +183,10 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Open File — force open in a regular editor (not diff)
 	context.subscriptions.push(
-		vscode.commands.registerCommand('focusor.openFile', (item: FocusorItem) => {
+		vscode.commands.registerCommand('focusor.openFile', async (item: FocusorItem) => {
 			if (item.filePath) {
+				if (await openNonDiffableFile(item)) { return; }
+
 				const uri = vscode.Uri.file(item.filePath);
 				// Use showTextDocument to ensure it opens as a regular file editor,
 				// even when a diff view of this file is already active.
@@ -122,8 +197,10 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Open Diff
 	context.subscriptions.push(
-		vscode.commands.registerCommand('focusor.openDiff', (item: FocusorItem) => {
+		vscode.commands.registerCommand('focusor.openDiff', async (item: FocusorItem) => {
 			if (item.filePath && item.repoPath) {
+				if (await openNonDiffableFile(item)) { return; }
+
 				const uri = vscode.Uri.file(item.filePath);
 
 				// Try to get the Git extension to create a proper git diff URI
@@ -155,34 +232,41 @@ export function activate(context: vscode.ExtensionContext) {
 
 			// Open a diff in the SCM context to focus on the repo
 			const gitExtension = vscode.extensions.getExtension<GitExtension>('vscode.git');
-			if (gitExtension?.isActive) {
-				const api = gitExtension.exports.getAPI(1);
-				const repo = api.getRepository(vscode.Uri.file(item.repoPath));
-				if (repo) {
-					// If it's a file item, open diff for that specific file
-					// If it's a repo item, open diff for the first changed file
-					let fileUri: vscode.Uri | undefined;
+				if (gitExtension?.isActive) {
+					const api = gitExtension.exports.getAPI(1);
+					const repo = api.getRepository(vscode.Uri.file(item.repoPath));
+					if (repo) {
+						if (item.itemType === FocusorItemType.File && await openNonDiffableFile(item)) { return; }
 
-					if (item.itemType === FocusorItemType.File && item.filePath) {
-						fileUri = vscode.Uri.file(item.filePath);
-					} else {
-						const changes = [
-							...repo.state.workingTreeChanges,
-							...repo.state.indexChanges,
-						];
-						if (changes.length > 0) {
-							fileUri = changes[0].uri;
+						// If it's a file item, open diff for that specific file
+						// If it's a repo item, open diff for the first changed file
+						let fileUri: vscode.Uri | undefined;
+						let originalUri: vscode.Uri | undefined;
+
+						if (item.itemType === FocusorItemType.File && item.filePath) {
+							fileUri = vscode.Uri.file(item.filePath);
+						} else {
+							const changes = [
+								...repo.state.workingTreeChanges,
+								...repo.state.indexChanges,
+							];
+							if (changes.length > 0) {
+								const firstChange = changes[0];
+								originalUri = firstChange.originalUri;
+								fileUri = isDeletedStatus(firstChange.status)
+									? vscode.Uri.from({ scheme: FOCUSOR_DELETED_EMPTY_SCHEME, path: firstChange.uri.fsPath })
+									: firstChange.uri;
+							}
+						}
+
+						if (fileUri) {
+							const headUri = originalUri ?? api.toGitUri(fileUri, 'HEAD');
+							const fileName = fileUri.path.split('/').pop() ?? 'file';
+							await vscode.commands.executeCommand('vscode.diff', headUri, fileUri, `${fileName} (Working Tree)`);
 						}
 					}
-
-					if (fileUri) {
-						const headUri = api.toGitUri(fileUri, 'HEAD');
-						const fileName = fileUri.path.split('/').pop() ?? 'file';
-						await vscode.commands.executeCommand('vscode.diff', headUri, fileUri, `${fileName} (Working Tree)`);
-					}
 				}
-			}
-		}),
+			}),
 	);
 
 	const getItemPath = (item: any): string | undefined => {
@@ -298,8 +382,8 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.window.onDidChangeActiveTextEditor(editor => {
 			if (editor && editor.document.uri.scheme === 'file') {
 				const fsPath = editor.document.uri.fsPath;
-				focusorProvider.revealFile(fsPath, treeView, gitOnlyTreeView);
-				recentProvider.revealFile(fsPath, recentTreeView, recentSeparateTreeView);
+				focusorProvider.revealFile(fsPath, treeView);
+				recentProvider.revealFile(fsPath, recentTreeView);
 			}
 		})
 	);
@@ -318,16 +402,12 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		revealActiveEditor(treeView, focusorProvider),
-		revealActiveEditor(gitOnlyTreeView, focusorProvider),
-		revealActiveEditor(recentTreeView, recentProvider),
-		revealActiveEditor(recentSeparateTreeView, recentProvider)
+		revealActiveEditor(recentTreeView, recentProvider)
 	);
 
 	// Add disposables
 	context.subscriptions.push(treeView);
-	context.subscriptions.push(gitOnlyTreeView);
 	context.subscriptions.push(recentTreeView);
-	context.subscriptions.push(recentSeparateTreeView);
 	context.subscriptions.push(gitService);
 	context.subscriptions.push(decorationProvider);
 	context.subscriptions.push(focusorProvider);

@@ -1,6 +1,20 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { Status } from './git';
+
+export const FOCUSOR_DELETED_EMPTY_SCHEME = 'focusor-deleted-empty';
+
+/**
+ * Build a safe resource URI for tree items, avoiding missing file reads for deleted files.
+ * Tạo resource URI an toàn cho tree item, tránh đọc file không tồn tại khi file đã xóa.
+ */
+export function getFocusorResourceUri(filePath: string, status: Status | undefined): vscode.Uri {
+	const isDeleted = status !== undefined && isDeletedStatus(status);
+	const resourceUri = isDeleted
+		? vscode.Uri.from({ scheme: FOCUSOR_DELETED_EMPTY_SCHEME, path: filePath })
+		: vscode.Uri.file(filePath);
+
+	return resourceUri;
+}
 
 /**
  * Types of nodes in the Focusor tree view.
@@ -68,6 +82,32 @@ export function getStatusDisplay(status: Status): StatusDisplay {
 }
 
 /**
+ * Check whether a git status represents a deleted file.
+ * Kiểm tra trạng thái git có phải file đã bị xóa hay không.
+ */
+export function isDeletedStatus(status: Status): boolean {
+	const s = status as number;
+	return s === 2 || s === 6;
+}
+
+/**
+ * Check whether a git status represents a newly added or untracked file.
+ * Kiểm tra trạng thái git có phải file mới thêm hoặc chưa track hay không.
+ */
+export function isNewStatus(status: Status): boolean {
+	const s = status as number;
+	return s === 1 || s === 7 || s === 9;
+}
+
+/**
+ * Render text with a combining strikethrough for deleted tree labels.
+ * Render chữ với dấu gạch ngang kết hợp cho label file đã xóa trong tree.
+ */
+export function renderStrikethroughLabel(label: string): string {
+	return Array.from(label).map((char) => `${char}\u0336`).join('');
+}
+
+/**
  * Represents a node in the Focusor tree view — either a repo header or a changed file.
  */
 export class FocusorItem extends vscode.TreeItem {
@@ -105,7 +145,10 @@ export class FocusorItem extends vscode.TreeItem {
 		} else if (itemType === FocusorItemType.Folder) {
 			this.iconPath = vscode.ThemeIcon.Folder;
 		} else if (itemType === FocusorItemType.File && filePath) {
-			this.resourceUri = vscode.Uri.file(filePath);
+			if (fileStatus !== undefined && isDeletedStatus(fileStatus)) {
+				this.label = renderStrikethroughLabel(label);
+			}
+				this.resourceUri = getFocusorResourceUri(filePath, fileStatus);
 			// Use ThemeIcon for file so VS Code resolves the file icon
 			this.iconPath = vscode.ThemeIcon.File;
 
